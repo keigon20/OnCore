@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
-import { 
-  User, 
+import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import {
+  User,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
@@ -8,45 +8,16 @@ import {
   onAuthStateChanged,
   updateProfile,
   GoogleAuthProvider,
-  signInWithCredential,
-  AuthError
+  signInWithCredential
 } from 'firebase/auth';
-import * as Google from 'expo-auth-session';
-import * as WebBrowser from 'expo-web-browser';
-import { makeRedirectUri } from 'expo-auth-session';
-import { doc, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
+import { GoogleSignin, isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../utils/firebase';
 import { UserProfile } from '../types';
 
-// Complete the auth session on mount to handle redirects properly
-// This helps prevent the "missing initial state" error
-WebBrowser.maybeCompleteAuthSession();
-
-// Extend the types for expo-auth-session
-export type GoogleAuthRequestConfig = {
-  clientId: string;
-  scopes: string[];
-  extraParams?: {
-    include_granted_scopes?: string;
-    prompt?: string;
-  };
-};
-
-export type GoogleAuthResponse = {
-  type: string;
-  params: {
-    code?: string;
-    error?: string;
-  };
-  authentication?: {
-    accessToken: string;
-    idToken?: string;
-    refreshToken?: string;
-    scopes?: string[];
-    expirationDate?: number;
-    tokenType?: string;
-  };
-};
+GoogleSignin.configure({
+  webClientId: '1077269817537-og56f8jtikapoj531kafcf431sc5u7in.apps.googleusercontent.com',
+});
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -82,42 +53,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Use Firebase's OAuth redirect handler - this should already be authorized
-  const redirectUri = 'https://livemusictracker-6eeaf.firebaseapp.com/__/auth/handler';
-
-  // Google Auth Request - must be called at component top level
-  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest(
-    {
-      clientId: "1077269817537-og56f8jtikapoj531kafcf431sc5u7in.apps.googleusercontent.com",
-      scopes: ['openid', 'profile', 'email'],
-      redirectUri: redirectUri,
-      extraParams: {
-        include_granted_scopes: 'true',
-        prompt: 'consent',
-      },
-    },
-    {
-      authorizationEndpoint: 'https://accounts.google.com/o/oauth2/v2/auth',
-      tokenEndpoint: 'https://oauth2.googleapis.com/token',
-    }
-  );
-
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log('[Auth] onAuthStateChanged fired, uid:', firebaseUser?.uid ?? null);
       setFirebaseUser(firebaseUser);
-      
+
       if (firebaseUser) {
         // Fetch user profile from Firestore
         try {
+          const tokenResult = await firebaseUser.getIdTokenResult(true);
+          console.log('[Auth] forced token refresh, expiration:', tokenResult.expirationTime);
+
           const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
           if (userDoc.exists()) {
             const userData = userDoc.data();
-            setUser({
+            const resolvedUser = {
               id: firebaseUser.uid,
               email: firebaseUser.email || '',
               displayName: userData.displayName || firebaseUser.displayName || '',
               createdAt: userData.createdAt?.toDate() || new Date()
-            });
+            };
+            console.log('[Auth] setUser (existing doc):', resolvedUser);
+            setUser(resolvedUser);
           } else {
             // Create user profile if doesn't exist
             const newUser: UserProfile = {
@@ -130,15 +87,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
               ...newUser,
               createdAt: new Date()
             });
+            console.log('[Auth] setUser (new doc):', newUser);
             setUser(newUser);
           }
-        } catch (err) {
-          console.error('Error fetching user profile:', err);
+        } catch (err: any) {
+          console.error('[Auth] Error fetching user profile:', err?.code, err?.message, err);
         }
       } else {
+        console.log('[Auth] setUser(null)');
         setUser(null);
       }
-      
+
       setIsLoading(false);
     });
 
@@ -235,83 +194,32 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const signInWithGoogle = async (): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
-    
-    const maxRetries = 2;
-    let retryCount = 0;
-    
-    const attemptSignIn = async (): Promise<boolean> => {
-      try {
-        // Check if the request is null
-        if (!googleRequest) {
-          throw new Error('Failed to create Google auth request');
-        }
 
-        // Prompt the user to sign in with Google
-        const result = await googlePromptAsync();
-        
-        if (result.type !== 'success') {
-          // Check if it was cancelled by user or due to missing state
-          // Use type assertion to access params since it may exist on success type
-          const params = (result as any).params;
-          if (params?.error === 'access_denied' || result.type === 'cancel') {
-            setError('Google sign in was cancelled');
-            return false;
-          }
-          // It might be a missing state error - try again
-          throw new Error('Google sign in failed');
-        }
-
-        // Get tokens from the response - cast to any to access params
-        const response = result as any;
-        const { id_token, access_token } = response.params || {};
-        
-        // Use id_token for Firebase authentication
-        const idToken = id_token || access_token;
-        
-        if (!idToken) {
-          throw new Error('No ID token received from Google');
-        }
-        
-        // Create Firebase credential with the id token
-        const credential: any = GoogleAuthProvider.credential(idToken, '');
-        
-        // Sign in to Firebase with the credential
-        await signInWithCredential(auth, credential);
-        
-        return true;
-      } catch (err: any) {
-        console.error('Google Sign-In attempt error:', err);
-        
-        // Check if this is a "missing initial state" error that we can retry
-        if (retryCount < maxRetries && isMissingInitialStateError(err)) {
-          retryCount++;
-          console.log(`Retrying Google sign-in (attempt ${retryCount + 1}/${maxRetries + 1})...`);
-          // Wait a moment before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return attemptSignIn();
-        }
-        
-        throw err;
-      }
-    };
-    
     try {
-      const success = await attemptSignIn();
-      setIsLoading(false);
-      return success;
-    } catch (err: any) {
-      console.error('Google Sign-In error:', err);
-      
-      if (err.message === 'User cancelled') {
-        setError('Google sign in was cancelled');
-      } else if (isMissingInitialStateError(err)) {
-        // Provide a more user-friendly message for this specific error
-        setError('Unable to complete sign in. Please try again. If this persists, try closing and reopening the app.');
-      } else {
-        setError(mapFirebaseError(err.code) || 'Failed to sign in with Google');
+      await GoogleSignin.hasPlayServices();
+      const response = await GoogleSignin.signIn();
+
+      if (response.type !== 'success') {
+        return false;
       }
-      setIsLoading(false);
+
+      const idToken = response.data.idToken;
+      if (!idToken) {
+        throw new Error('No Google token received (idToken missing)');
+      }
+
+      const credential = GoogleAuthProvider.credential(idToken);
+      await signInWithCredential(auth, credential);
+      return true;
+    } catch (err: any) {
+      if (isErrorWithCode(err) && err.code === statusCodes.SIGN_IN_CANCELLED) {
+        return false;
+      }
+      console.error('Google Sign-In error:', err);
+      setError(mapFirebaseError(err.code) || err.message || 'Failed to sign in with Google');
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 

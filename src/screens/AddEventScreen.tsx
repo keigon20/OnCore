@@ -1,39 +1,64 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Alert,
-  Image
+  Image,
+  Switch
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEventStore } from '../contexts/EventStoreContext';
+import { useAuth } from '../contexts/AuthContext';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MusicEvent } from '../types';
+import { EventPrefill, RootStackParamList } from '../types/navigation';
+import { colors } from '../theme';
+import StarRating from '../components/StarRating';
+import OverallRatingInput from '../components/OverallRatingInput';
+import { isLocalUri, uploadEventImage } from '../utils/uploadImage';
 
 interface AddEventScreenProps {
-  onClose: () => void;
+  // Legacy
+  onClose?: () => void;
   eventToEdit?: MusicEvent;
 }
 
-export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenProps) {
+export default function AddEventScreen({ onClose, eventToEdit: propEvent }: AddEventScreenProps) {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const route = useRoute();
+  const insets = useSafeAreaInsets();
+  const eventToEdit = propEvent || (route.params as any)?.eventToEdit;
+  const prefill: EventPrefill | undefined = !eventToEdit ? (route.params as any)?.prefill : undefined;
   const { addEvent, updateEvent } = useEventStore();
-  
-  const [title, setTitle] = useState(eventToEdit?.title || '');
-  const [artistsText, setArtistsText] = useState(eventToEdit?.artists.join(', ') || '');
-  const [venue, setVenue] = useState(eventToEdit?.venue || '');
+  const { user } = useAuth();
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [title, setTitle] = useState(eventToEdit?.title || prefill?.title || '');
+  const [artistsText, setArtistsText] = useState(
+    eventToEdit?.artists.join(', ') || prefill?.artists.join(', ') || ''
+  );
+  const [venue, setVenue] = useState(eventToEdit?.venue || prefill?.venue || '');
   const [date, setDate] = useState(
-    eventToEdit 
+    eventToEdit
       ? new Date(eventToEdit.date).toISOString().split('T')[0]
-      : new Date().toISOString().split('T')[0]
+      : prefill?.date || new Date().toISOString().split('T')[0]
   );
   const [cost, setCost] = useState(eventToEdit?.cost.toString() || '');
   const [notes, setNotes] = useState(eventToEdit?.notes || '');
-  const [imageUri, setImageUri] = useState(eventToEdit?.imageUri || '');
+  const [imageUri, setImageUri] = useState(eventToEdit?.imageUri || prefill?.imageUri || '');
+  const [overallRating, setOverallRating] = useState(eventToEdit?.overallRating ?? 0);
+  const [soundRating, setSoundRating] = useState(eventToEdit?.soundRating ?? 0);
+  const [crowdRating, setCrowdRating] = useState(eventToEdit?.crowdRating ?? 0);
+  const [setlistRating, setSetlistRating] = useState(eventToEdit?.setlistRating ?? 0);
+  const [isHidden, setIsHidden] = useState(eventToEdit?.isHidden ?? false);
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -61,31 +86,49 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
 
     const artists = artistsText
       .split(',')
-      .map(a => a.trim())
-      .filter(a => a.length > 0);
+      .map((a: string) => a.trim())
+      .filter((a: string) => a.length > 0) as string[];
 
-    const eventData = {
-      title: title.trim(),
-      artists,
-      venue: venue.trim(),
-      date: new Date(date),
-      cost: parseFloat(cost) || 0,
-      notes: notes.trim(),
-      imageUri: imageUri || undefined,
-    };
+    setIsSaving(true);
 
     try {
+      // Local picker URIs only resolve on this device - upload to Storage so
+      // friends viewing this event from their own device can load the image too.
+      let finalImageUri = imageUri;
+      if (imageUri && isLocalUri(imageUri) && user) {
+        finalImageUri = await uploadEventImage(imageUri, user.id);
+      }
+
+      const eventData = {
+        title: title.trim(),
+        artists,
+        venue: venue.trim(),
+        date: new Date(date),
+        cost: parseFloat(cost) || 0,
+        notes: notes.trim(),
+        imageUri: finalImageUri || undefined,
+        overallRating: overallRating || undefined,
+        soundRating: soundRating || undefined,
+        crowdRating: crowdRating || undefined,
+        setlistRating: setlistRating || undefined,
+        isHidden,
+      };
+
       if (eventToEdit) {
         await updateEvent({
           ...eventToEdit,
           ...eventData,
         });
+        navigation.goBack();
       } else {
         await addEvent(eventData);
+        // Creating goes through SearchEvent first, so pop all the way back to the tabs
+        // instead of just one screen (which would land back on SearchEvent).
+        navigation.popToTop();
       }
-      onClose();
     } catch (error) {
       Alert.alert('Error', 'Failed to save event');
+      setIsSaving(false);
     }
   };
 
@@ -94,18 +137,18 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={onClose}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>
-            {eventToEdit ? 'Edit Event' : 'Add Event'}
-          </Text>
-          <TouchableOpacity onPress={handleSave}>
-            <Text style={styles.saveText}>Save</Text>
-          </TouchableOpacity>
-        </View>
+      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+  <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+      <TouchableOpacity onPress={() => navigation.goBack()}>
+        <Text style={styles.cancelText}>Cancel</Text>
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>
+        {eventToEdit ? 'Edit Event' : 'Add Event'}
+      </Text>
+      <TouchableOpacity onPress={handleSave} disabled={isSaving}>
+        <Text style={styles.saveText}>{isSaving ? 'Saving...' : 'Save'}</Text>
+      </TouchableOpacity>
+    </View>
 
         <View style={styles.imageSection}>
           <TouchableOpacity style={styles.imagePicker} onPress={pickImage}>
@@ -113,7 +156,6 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
               <Image source={{ uri: imageUri }} style={styles.image} />
             ) : (
               <View style={styles.imagePlaceholder}>
-                <Text style={styles.imagePlaceholderText}>📷</Text>
                 <Text style={styles.imagePlaceholderLabel}>Add Photo</Text>
               </View>
             )}
@@ -125,6 +167,7 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
             <Text style={styles.label}>Event Title *</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={title}
               onChangeText={setTitle}
               placeholder="e.g., Summer Tour 2024"
@@ -135,6 +178,7 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
             <Text style={styles.label}>Artists (comma separated)</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={artistsText}
               onChangeText={setArtistsText}
               placeholder="e.g., Taylor Swift, Ed Sheeran"
@@ -145,6 +189,7 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
             <Text style={styles.label}>Venue *</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={venue}
               onChangeText={setVenue}
               placeholder="e.g., Madison Square Garden"
@@ -155,6 +200,7 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
             <Text style={styles.label}>Date</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={date}
               onChangeText={setDate}
               placeholder="YYYY-MM-DD"
@@ -165,6 +211,7 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
             <Text style={styles.label}>Cost ($)</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={cost}
               onChangeText={setCost}
               placeholder="0.00"
@@ -173,9 +220,43 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
           </View>
 
           <View style={styles.inputGroup}>
+            <Text style={styles.label}>Overall Rating</Text>
+            <OverallRatingInput value={overallRating} onChange={setOverallRating} />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Sound</Text>
+            <StarRating value={soundRating} onChange={setSoundRating} />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Crowd</Text>
+            <StarRating value={crowdRating} onChange={setCrowdRating} />
+          </View>
+
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>Setlist</Text>
+            <StarRating value={setlistRating} onChange={setSetlistRating} />
+          </View>
+
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleTextGroup}>
+              <Text style={styles.label}>Hide from friends</Text>
+              <Text style={styles.toggleSubtext}>Hidden events never appear in friends' feeds</Text>
+            </View>
+            <Switch
+              value={isHidden}
+              onValueChange={setIsHidden}
+              trackColor={{ false: colors.surfaceAlt, true: colors.accent }}
+              thumbColor={colors.textPrimary}
+            />
+          </View>
+
+          <View style={styles.inputGroup}>
             <Text style={styles.label}>Notes</Text>
             <TextInput
               style={[styles.input, styles.textArea]}
+              placeholderTextColor={colors.textTertiary}
               value={notes}
               onChangeText={setNotes}
               placeholder="Add any notes about the event..."
@@ -192,7 +273,7 @@ export default function AddEventScreen({ onClose, eventToEdit }: AddEventScreenP
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -203,19 +284,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
+    borderBottomColor: colors.border,
   },
   cancelText: {
     fontSize: 16,
-    color: '#666',
+    color: colors.textSecondary,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
   saveText: {
     fontSize: 16,
-    color: '#007AFF',
+    color: colors.accent,
     fontWeight: '600',
   },
   imageSection: {
@@ -225,7 +307,9 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 12,
     overflow: 'hidden',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   image: {
     width: '100%',
@@ -236,13 +320,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  imagePlaceholderText: {
-    fontSize: 40,
-    marginBottom: 8,
-  },
   imagePlaceholderLabel: {
     fontSize: 16,
-    color: '#666',
+    color: colors.textSecondary,
   },
   form: {
     padding: 16,
@@ -252,18 +332,34 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: 14,
     fontSize: 16,
+    color: colors.textPrimary,
   },
   textArea: {
     height: 100,
     textAlignVertical: 'top',
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  toggleTextGroup: {
+    flex: 1,
+    marginRight: 12,
+  },
+  toggleSubtext: {
+    fontSize: 12,
+    color: colors.textTertiary,
+    marginTop: 2,
   },
 });
 

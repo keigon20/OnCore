@@ -12,6 +12,7 @@ import {
   Alert
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { colors } from '../theme';
 
 interface AuthScreenProps {
   onAuthSuccess: () => void;
@@ -87,7 +88,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.appName}>🎵 Live Music Tracker</Text>
+          <Text style={styles.appName}>Live Music Tracker</Text>
           <Text style={styles.subtitle}>
             {isLoginMode ? 'Welcome Back!' : 'Create Account'}
           </Text>
@@ -99,6 +100,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
               <Text style={styles.label}>Display Name</Text>
               <TextInput
                 style={styles.input}
+                placeholderTextColor={colors.textTertiary}
                 value={displayName}
                 onChangeText={setDisplayName}
                 placeholder="Your name"
@@ -111,6 +113,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
             <Text style={styles.label}>Email</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={email}
               onChangeText={setEmail}
               placeholder="Enter your email"
@@ -124,6 +127,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
             <Text style={styles.label}>Password</Text>
             <TextInput
               style={styles.input}
+              placeholderTextColor={colors.textTertiary}
               value={password}
               onChangeText={setPassword}
               placeholder="Enter your password"
@@ -136,6 +140,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
               <Text style={styles.label}>Confirm Password</Text>
               <TextInput
                 style={styles.input}
+                placeholderTextColor={colors.textTertiary}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
                 placeholder="Confirm your password"
@@ -214,6 +219,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
               <Text style={styles.modalTitle}>Reset Password</Text>
               <TextInput
                 style={styles.input}
+                placeholderTextColor={colors.textTertiary}
                 value={resetEmail}
                 onChangeText={setResetEmail}
                 placeholder="Enter your email"
@@ -245,7 +251,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   scrollContent: {
     flexGrow: 1,
@@ -257,41 +263,39 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   appName: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#007AFF',
+    fontSize: 26,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   subtitle: {
-    fontSize: 18,
-    color: '#666',
+    fontSize: 16,
+    color: colors.textSecondary,
   },
   form: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   inputGroup: {
     marginBottom: 16,
   },
   label: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   input: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     padding: 14,
     fontSize: 16,
+    color: colors.textPrimary,
   },
   errorText: {
-    color: '#ff3b30',
+    color: colors.destructive,
     fontSize: 14,
     textAlign: 'center',
     marginBottom: 16,
@@ -301,34 +305,34 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   forgotPasswordText: {
-    color: '#007AFF',
+    color: colors.textSecondary,
     fontSize: 14,
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
   },
   buttonDisabled: {
-    backgroundColor: '#007AFF80',
+    backgroundColor: colors.surfaceAlt,
   },
   buttonText: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
   googleButton: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
   },
   googleButtonText: {
-    color: '#333',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '500',
   },
@@ -340,20 +344,20 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#ddd',
+    backgroundColor: colors.border,
   },
   dividerText: {
     marginHorizontal: 10,
-    color: '#999',
+    color: colors.textTertiary,
   },
   guestButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 12,
     padding: 14,
     alignItems: 'center',
   },
   guestButtonText: {
-    color: '#333',
+    color: colors.textSecondary,
     fontSize: 16,
   },
   switchMode: {
@@ -361,7 +365,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   switchModeText: {
-    color: '#007AFF',
+    color: colors.textSecondary,
     fontSize: 14,
   },
   modalOverlay: {
@@ -370,19 +374,22 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modal: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
     width: '85%',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 16,
     textAlign: 'center',
   },
@@ -399,16 +406,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   cancelButton: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surfaceAlt,
   },
   cancelButtonText: {
-    color: '#666',
+    color: colors.textSecondary,
   },
   resetButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
   },
   resetButtonText: {
-    color: '#fff',
+    color: colors.textPrimary,
   },
 });
 

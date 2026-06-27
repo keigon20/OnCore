@@ -1,24 +1,15 @@
-# Auth Context Fix - TODO
+# Google Auth Fix TODO
 
-## Task: Fix "missing initial state" Firebase Auth error
+## Status: [In Progress]
 
-### Steps:
-- [x] 1. Analyze codebase to understand the issue
-- [x] 2. Add explicit session persistence to Firebase Auth
-- [x] 3. Add error handling for "missing initial state" with retry
-- [x] 4. Add state recovery mechanism
-- [x] 5. Improve Google sign-in error handling
-- [x] 6. Add WebBrowser.maybeCompleteAuthSession() for redirect handling
+### 1. [X] Create TODO.md (done)
+### 2. [✅] Update AuthContext.tsx - Remove 'prompt: 'consent'' + add diagnostics
+### 3. [ ] Test in Expo Go - Check if UI appears (likely still fails due to Go limitations)
+### 4. [ ] Guide user to create Development Build: `eas build --profile development --platform all`
+### 5. [ ] Test in Dev Build - Verify Google picker shows, auth completes
+### 6. [ ] Add diagnostics logs if needed
+### 7. [ ] [Optional] Switch to @react-native-google-signin/google-signin for better Expo Go support
+### 8. [ ] Update TODO.md with completion
+### 9. [ ] Complete task
 
-### Files modified:
-- src/utils/firebase.ts - Added auth persistence settings
-- src/contexts/AuthContext.tsx - Added error handling, retry logic, and recovery
-
-### Summary of changes:
-1. Added session-based persistence to Firebase Auth (with fallback to in-memory)
-2. Added helper function to detect "missing initial state" error
-3. Added retry logic (up to 2 retries) for Google sign-in
-4. Improved error messages for all auth methods
-5. Added WebBrowser.maybeCompleteAuthSession() call on module load
-6. Added new error codes to mapFirebaseError (session-cookie-expired, user-token-expired, requires-recent-login)
-
+**Next Step:** Edit AuthContext.tsx

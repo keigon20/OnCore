@@ -9,16 +9,25 @@ import {
   TextInput,
   Modal
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../contexts/AuthContext';
 import { useEventStore } from '../contexts/EventStoreContext';
+import { useFriends } from '../contexts/FriendsContext';
+import { colors } from '../theme';
+import type { RootStackParamList } from '../types/navigation';
 
 interface ProfileScreenProps {
   onSignIn: () => void;
 }
 
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
 export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
+  const navigation = useNavigation<NavigationProp>();
   const { user, isAuthenticated, logout } = useAuth();
   const eventStore = useEventStore();
+  const { friends, incomingRequests } = useFriends();
   const [showEditName, setShowEditName] = useState(false);
   const [tempName, setTempName] = useState(user?.displayName || '');
 
@@ -43,9 +52,8 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
     );
   };
 
-  const renderStatCard = (icon: string, title: string, value: string, color: string = '#007AFF') => (
-    <View style={[styles.statCard, { borderLeftColor: color }]}>
-      <Text style={styles.statIcon}>{icon}</Text>
+  const renderStatCard = (title: string, value: string) => (
+    <View style={styles.statCard}>
       <Text style={styles.statTitle}>{title}</Text>
       <Text style={styles.statValue}>{value}</Text>
     </View>
@@ -69,19 +77,18 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
       </View>
 
       <View style={styles.statsGrid}>
-        {renderStatCard('🎵', 'Total Events', `${eventStore.totalEvents}`, '#007AFF')}
-        {renderStatCard('🎸', 'Unique Artists', `${eventStore.uniqueArtists}`, '#FF9500')}
-        {renderStatCard('🏟️', 'Unique Venues', `${eventStore.uniqueVenues}`, '#AF52DE')}
-        {renderStatCard('💰', 'Total Spent', formatCurrency(eventStore.totalMoneySpent), '#34C759')}
-        {renderStatCard('📊', 'Average Cost', formatCurrency(eventStore.averageCost), '#007AFF')}
-        {renderStatCard('⭐', 'Favorite Artist', eventStore.favoriteArtist || 'N/A', '#FFCC00')}
+        {renderStatCard('Total Events', `${eventStore.totalEvents}`)}
+        {renderStatCard('Unique Artists', `${eventStore.uniqueArtists}`)}
+        {renderStatCard('Unique Venues', `${eventStore.uniqueVenues}`)}
+        {renderStatCard('Total Spent', formatCurrency(eventStore.totalMoneySpent))}
+        {renderStatCard('Average Cost', formatCurrency(eventStore.averageCost))}
+        {renderStatCard('Favorite Artist', eventStore.favoriteArtist || 'N/A')}
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Recent Events</Text>
         {eventStore.mostRecentEvent && (
           <View style={styles.infoRow}>
-            <Text style={styles.infoIcon}>📅</Text>
             <View>
               <Text style={styles.infoTitle}>Most Recent</Text>
               <Text style={styles.infoValue}>{eventStore.mostRecentEvent.title}</Text>
@@ -93,7 +100,6 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
         )}
         {eventStore.oldestEvent && (
           <View style={styles.infoRow}>
-            <Text style={styles.infoIcon}>🎫</Text>
             <View>
               <Text style={styles.infoTitle}>First Event</Text>
               <Text style={styles.infoValue}>{eventStore.oldestEvent.title}</Text>
@@ -104,6 +110,17 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
           </View>
         )}
       </View>
+
+      {isAuthenticated && (
+        <View style={styles.section}>
+          <TouchableOpacity style={styles.friendsRow} onPress={() => navigation.navigate('Friends')}>
+            <Text style={styles.friendsRowText}>Friends</Text>
+            <Text style={styles.friendsRowValue}>
+              {friends.length}{incomingRequests.length > 0 ? ` · ${incomingRequests.length} pending` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.authSection}>
         {isAuthenticated ? (
@@ -133,6 +150,7 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
             <Text style={styles.modalTitle}>Edit Name</Text>
             <TextInput
               style={styles.modalInput}
+              placeholderTextColor={colors.textTertiary}
               value={tempName}
               onChangeText={setTempName}
               placeholder="Enter your name"
@@ -161,40 +179,43 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   header: {
     alignItems: 'center',
     paddingVertical: 30,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
   },
   avatar: {
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1,
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 12,
   },
   avatarText: {
     fontSize: 32,
-    color: '#fff',
-    fontWeight: 'bold',
+    color: colors.textPrimary,
+    fontWeight: '600',
   },
   displayName: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   email: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   subtitle: {
     fontSize: 14,
-    color: '#999',
+    color: colors.textTertiary,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -204,38 +225,32 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '48%',
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    borderLeftWidth: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statIcon: {
-    fontSize: 24,
-    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   statTitle: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   statValue: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    color: colors.textPrimary,
   },
   section: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 16,
     marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 16,
   },
   infoRow: {
@@ -243,89 +258,107 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  infoIcon: {
-    fontSize: 24,
-    marginRight: 12,
+    borderBottomColor: colors.border,
   },
   infoTitle: {
     fontSize: 12,
-    color: '#666',
+    color: colors.textSecondary,
   },
   infoValue: {
     fontSize: 16,
     fontWeight: '600',
+    color: colors.textPrimary,
   },
   infoDate: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
+  },
+  friendsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  friendsRowText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.textPrimary,
+  },
+  friendsRowValue: {
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   authSection: {
     padding: 16,
   },
   logoutButton: {
-    backgroundColor: '#ff3b30',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.destructive,
     padding: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
   logoutButtonText: {
-    color: '#fff',
+    color: colors.destructive,
     fontSize: 16,
     fontWeight: '600',
   },
   loginPrompt: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     padding: 20,
     borderRadius: 12,
     alignItems: 'center',
   },
   loginTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   loginSubtitle: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 16,
   },
   loginButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
   loginButtonText: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 16,
     padding: 20,
     width: '85%',
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 16,
     textAlign: 'center',
   },
   modalInput: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surfaceAlt,
     borderRadius: 10,
     padding: 14,
     fontSize: 16,
+    color: colors.textPrimary,
     marginBottom: 16,
   },
   modalButtons: {
@@ -340,16 +373,16 @@ const styles = StyleSheet.create({
     marginHorizontal: 4,
   },
   cancelBtn: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surfaceAlt,
   },
   cancelBtnText: {
-    color: '#666',
+    color: colors.textSecondary,
   },
   saveBtn: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
   },
   saveBtnText: {
-    color: '#fff',
+    color: colors.textPrimary,
   },
 });
 

@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { 
-  collection, 
-  doc, 
-  onSnapshot, 
-  setDoc, 
-  deleteDoc, 
-  query, 
+import {
+  collection,
+  doc,
+  onSnapshot,
+  setDoc,
+  deleteDoc,
+  query,
+  where,
   orderBy,
-  serverTimestamp 
+  serverTimestamp
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../utils/firebase';
@@ -15,6 +16,7 @@ import { useAuth } from './AuthContext';
 import { MusicEvent, YearStatistics } from '../types';
 
 const EVENTS_STORAGE_KEY = 'music_events';
+const EVENTS_COLLECTION = 'events';
 
 interface EventStoreContextType {
   events: MusicEvent[];
@@ -58,9 +60,10 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
   // Load events based on auth state
   useEffect(() => {
     if (isAuthenticated && user) {
-      // Load from Firestore
+      // Load from Firestore - top-level collection so friends' events can be queried by userId
       const q = query(
-        collection(db, 'users', user.id, 'events'),
+        collection(db, EVENTS_COLLECTION),
+        where('userId', '==', user.id),
         orderBy('date', 'desc')
       );
 
@@ -76,11 +79,19 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
             cost: data.cost || 0,
             notes: data.notes || '',
             imageUri: data.imageUri || undefined,
+            overallRating: data.overallRating,
+            soundRating: data.soundRating,
+            crowdRating: data.crowdRating,
+            setlistRating: data.setlistRating,
+            isHidden: data.isHidden || false,
             createdAt: data.createdAt?.toDate() || new Date(),
             updatedAt: data.updatedAt?.toDate() || new Date()
           };
         });
         setEvents(loadedEvents);
+        setIsLoading(false);
+      }, (error) => {
+        console.error('[EventStore] Firestore listener error:', error.code, error.message);
         setIsLoading(false);
       });
 
@@ -135,19 +146,16 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
     };
 
     if (isAuthenticated && user) {
-      // Save to Firestore
-      const eventRef = doc(collection(db, 'users', user.id, 'events'));
+      // Save to Firestore - the onSnapshot listener will update local state
+      const eventRef = doc(collection(db, EVENTS_COLLECTION));
       await setDoc(eventRef, {
         ...newEvent,
+        userId: user.id,
+        userDisplayName: user.displayName,
+        isHidden: newEvent.isHidden || false,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       }, { merge: true });
-      
-      // Update local state
-      setEvents(prev => [{
-        ...newEvent,
-        id: eventRef.id
-      }, ...prev]);
     } else {
       // Save locally with generated ID
       const localEvent = {
@@ -166,8 +174,10 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
 
     if (isAuthenticated && user) {
       // Update in Firestore
-      await setDoc(doc(db, 'users', user.id, 'events', event.id), {
+      await setDoc(doc(db, EVENTS_COLLECTION, event.id), {
         ...updatedEvent,
+        userId: user.id,
+        userDisplayName: user.displayName,
         updatedAt: serverTimestamp()
       }, { merge: true });
     }
@@ -179,7 +189,7 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
   const deleteEvent = async (id: string) => {
     if (isAuthenticated && user) {
       // Delete from Firestore
-      await deleteDoc(doc(db, 'users', user.id, 'events', id));
+      await deleteDoc(doc(db, EVENTS_COLLECTION, id));
     }
 
     // Update local state

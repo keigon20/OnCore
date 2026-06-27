@@ -10,13 +10,23 @@ import {
 } from 'react-native';
 import { useEventStore } from '../contexts/EventStoreContext';
 import { MusicEvent } from '../types';
+import { colors } from '../theme';
 
 interface JournalScreenProps {
-  onEventPress: (event: MusicEvent) => void;
-  onAddEvent: () => void;
+  // Legacy props - will use navigation directly if available
+  onEventPress?: (event: MusicEvent) => void;
+  onAddEvent?: () => void;
 }
 
+import { useNavigation } from '@react-navigation/native';
+import type { RootStackParamList } from '../types/navigation';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
+
+
 export default function JournalScreen({ onEventPress, onAddEvent }: JournalScreenProps) {
+  const navigation = useNavigation<NavigationProp>();
   const { events, deleteEvent } = useEventStore();
   const [searchText, setSearchText] = useState('');
 
@@ -49,7 +59,15 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
   const renderEvent = ({ item }: { item: MusicEvent }) => (
     <TouchableOpacity 
       style={styles.eventCard}
-      onPress={() => onEventPress(item)}
+      onPress={() => {
+        if (onEventPress) {
+          onEventPress(item);
+        } else {
+          navigation.navigate('EventDetail', { event: item });
+
+        }
+      }}
+
       onLongPress={() => handleDelete(item)}
     >
       <View style={styles.eventContent}>
@@ -70,12 +88,18 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
 
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
-      <Text style={styles.emptyIcon}>🎵</Text>
       <Text style={styles.emptyTitle}>No Events Yet</Text>
       <Text style={styles.emptySubtitle}>
         Start tracking your live music experiences!
       </Text>
-      <TouchableOpacity style={styles.emptyButton} onPress={onAddEvent}>
+      <TouchableOpacity style={styles.emptyButton} onPress={() => {
+        if (onAddEvent) {
+          onAddEvent();
+        } else {
+          navigation.navigate('SearchEvent');
+        }
+      }}>
+
         <Text style={styles.emptyButtonText}>Add Your First Event</Text>
       </TouchableOpacity>
     </View>
@@ -83,14 +107,20 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
 
   return (
     <View style={styles.container}>
+      {/* Keep content below the OS status bar / notch so the search bar stays accessible */}
+      <View style={{ height: 30 }} />
+
+
       <View style={styles.searchContainer}>
         <TextInput
           style={styles.searchInput}
           placeholder="Search events..."
+          placeholderTextColor={colors.textTertiary}
           value={searchText}
           onChangeText={setSearchText}
         />
       </View>
+
 
       <FlatList
         data={filteredEvents}
@@ -101,7 +131,13 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
       />
 
       {events.length > 0 && (
-        <TouchableOpacity style={styles.fab} onPress={onAddEvent}>
+        <TouchableOpacity style={styles.fab} onPress={() => {
+        if (onAddEvent) {
+          onAddEvent();
+        } else {
+          navigation.navigate('SearchEvent');
+        }
+        }}>
           <Text style={styles.fabText}>+</Text>
         </TouchableOpacity>
       )}
@@ -112,17 +148,18 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.background,
   },
   searchContainer: {
     padding: 16,
-    backgroundColor: '#fff',
+    backgroundColor: colors.background,
   },
   searchInput: {
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.surface,
     borderRadius: 10,
     padding: 12,
     fontSize: 16,
+    color: colors.textPrimary,
   },
   list: {
     padding: 16,
@@ -131,14 +168,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   eventCard: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surface,
     borderRadius: 12,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   eventContent: {
     padding: 16,
@@ -147,18 +181,19 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   eventTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 4,
   },
   eventArtists: {
     fontSize: 14,
-    color: '#666',
+    color: colors.textSecondary,
     marginBottom: 2,
   },
   eventVenue: {
     fontSize: 14,
-    color: '#007AFF',
+    color: colors.textTertiary,
     marginBottom: 8,
   },
   eventMeta: {
@@ -167,12 +202,12 @@ const styles = StyleSheet.create({
   },
   eventDate: {
     fontSize: 12,
-    color: '#999',
+    color: colors.textTertiary,
   },
   eventCost: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#34C759',
+    color: colors.textPrimary,
   },
   emptyContainer: {
     flex: 1,
@@ -180,29 +215,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 40,
   },
-  emptyIcon: {
-    fontSize: 60,
-    marginBottom: 16,
-  },
   emptyTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.textPrimary,
     marginBottom: 8,
   },
   emptySubtitle: {
-    fontSize: 16,
-    color: '#666',
+    fontSize: 15,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
   },
   emptyButton: {
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
   },
   emptyButtonText: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -213,17 +245,12 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#007AFF',
+    backgroundColor: colors.accent,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
   },
   fabText: {
-    color: '#fff',
+    color: colors.textPrimary,
     fontSize: 30,
     fontWeight: '300',
   },
