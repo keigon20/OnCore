@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -24,6 +24,9 @@ import { colors } from '../theme';
 import StarRating from '../components/StarRating';
 import OverallRatingInput from '../components/OverallRatingInput';
 import { isLocalUri, uploadEventImage } from '../utils/uploadImage';
+import { searchTicketmasterVenues, TicketmasterVenueResult } from '../utils/ticketmaster';
+import { useFriends } from '../contexts/FriendsContext';
+import { writeNotification } from '../utils/notifications';
 
 interface AddEventScreenProps {
   // Legacy
@@ -39,13 +42,38 @@ export default function AddEventScreen({ onClose, eventToEdit: propEvent }: AddE
   const prefill: EventPrefill | undefined = !eventToEdit ? (route.params as any)?.prefill : undefined;
   const { addEvent, updateEvent } = useEventStore();
   const { user } = useAuth();
+  const { friends } = useFriends();
   const [isSaving, setIsSaving] = useState(false);
+  const [venueResults, setVenueResults] = useState<TicketmasterVenueResult[]>([]);
+  const initialVenue = useRef(eventToEdit?.venue || prefill?.venue || '');
 
   const [title, setTitle] = useState(eventToEdit?.title || prefill?.title || '');
   const [artistsText, setArtistsText] = useState(
     eventToEdit?.artists.join(', ') || prefill?.artists.join(', ') || ''
   );
   const [venue, setVenue] = useState(eventToEdit?.venue || prefill?.venue || '');
+
+  useEffect(() => {
+    if (venue === initialVenue.current || venue.trim().length < 2) {
+      setVenueResults([]);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const results = await searchTicketmasterVenues(venue.trim());
+        setVenueResults(results);
+      } catch {
+        setVenueResults([]);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [venue]);
+
+  const handleVenueSelect = (name: string) => {
+    setVenue(name);
+    setVenueResults([]);
+    initialVenue.current = name;
+  };
   const [date, setDate] = useState(
     eventToEdit
       ? new Date(eventToEdit.date).toISOString().split('T')[0]
@@ -121,12 +149,25 @@ export default function AddEventScreen({ onClose, eventToEdit: propEvent }: AddE
         });
         navigation.goBack();
       } else {
-        await addEvent(eventData);
+        const newEventId = await addEvent(eventData);
+        if (user) {
+          friends.forEach(friend => {
+            writeNotification(friend.id, {
+              type: 'friend_post',
+              fromUserId: user.id,
+              fromDisplayName: user.displayName,
+              eventId: newEventId,
+              eventTitle: eventData.title,
+              eventOwnerId: user.id,
+            }).catch(console.error);
+          });
+        }
         // Creating goes through SearchEvent first, so pop all the way back to the tabs
         // instead of just one screen (which would land back on SearchEvent).
         navigation.popToTop();
       }
     } catch (error) {
+      console.error('[AddEventScreen] Failed to save event:', error);
       Alert.alert('Error', 'Failed to save event');
       setIsSaving(false);
     }
@@ -194,6 +235,30 @@ export default function AddEventScreen({ onClose, eventToEdit: propEvent }: AddE
               onChangeText={setVenue}
               placeholder="e.g., Madison Square Garden"
             />
+            {venueResults.length > 0 && (
+              <View style={styles.dropdown}>
+                {venueResults.map((v) => (
+                  <TouchableOpacity
+                    key={v.id}
+                    style={styles.dropdownItem}
+                    onPress={() => handleVenueSelect(v.name)}
+                  >
+                    <Text style={styles.dropdownItemTitle}>{v.name}</Text>
+                    {(v.city || v.state) && (
+                      <Text style={styles.dropdownItemSubtitle}>
+                        {[v.city, v.state].filter(Boolean).join(', ')}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[styles.dropdownItem, styles.dropdownItemCustom]}
+                  onPress={() => handleVenueSelect(venue)}
+                >
+                  <Text style={styles.dropdownItemCustomText}>Use "{venue}"</Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -360,6 +425,35 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.textTertiary,
     marginTop: 2,
+  },
+  dropdown: {
+    marginTop: 4,
+    backgroundColor: colors.surface,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  dropdownItemTitle: {
+    fontSize: 15,
+    color: colors.textPrimary,
+  },
+  dropdownItemSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  dropdownItemCustom: {
+    borderBottomWidth: 0,
+  },
+  dropdownItemCustomText: {
+    fontSize: 15,
+    color: colors.accent,
   },
 });
 

@@ -8,9 +8,11 @@ import {
   TextInput,
   Alert
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useEventStore } from '../contexts/EventStoreContext';
 import { MusicEvent } from '../types';
 import { colors } from '../theme';
+import Logo from '../components/Logo';
 
 interface JournalScreenProps {
   // Legacy props - will use navigation directly if available
@@ -27,6 +29,7 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function JournalScreen({ onEventPress, onAddEvent }: JournalScreenProps) {
   const navigation = useNavigation<NavigationProp>();
+  const insets = useSafeAreaInsets();
   const { events, deleteEvent } = useEventStore();
   const [searchText, setSearchText] = useState('');
 
@@ -107,9 +110,9 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
 
   return (
     <View style={styles.container}>
-      {/* Keep content below the OS status bar / notch so the search bar stays accessible */}
-      <View style={{ height: 30 }} />
-
+      <View style={[styles.logoRow, { paddingTop: insets.top + 16 }]}>
+        <Logo />
+      </View>
 
       <View style={styles.searchContainer}>
         <TextInput
@@ -148,6 +151,10 @@ export default function JournalScreen({ onEventPress, onAddEvent }: JournalScree
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  logoRow: {
+    paddingHorizontal: 16,
     backgroundColor: colors.background,
   },
   searchContainer: {

@@ -17,6 +17,7 @@ import { RootStackParamList } from '../types/navigation';
 import { colors } from '../theme';
 import StarRating from '../components/StarRating';
 import CommentThread from '../components/CommentThread';
+import ShareTicketButton from '../components/ShareTicketButton';
 import { useEventSocial } from '../hooks/useEventSocial';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -154,6 +155,7 @@ export default function EventDetailScreen({ event: propEvent, onEdit, onClose }:
               eventId={event.id}
               comment={comment}
               onDeleteComment={() => deleteComment(comment.id)}
+              isPostOwner
             />
           ))}
 
@@ -188,14 +190,16 @@ export default function EventDetailScreen({ event: propEvent, onEdit, onClose }:
         </View>
 
         <View style={styles.actions}>
-          <TouchableOpacity 
+          <ShareTicketButton event={event} />
+
+          <TouchableOpacity
             style={styles.editButton}
             onPress={() => navigation.navigate('AddEvent', { eventToEdit: event })}
           >
             <Text style={styles.editButtonText}>Edit Event</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.deleteButton}
             onPress={handleDelete}
           >

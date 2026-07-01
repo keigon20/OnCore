@@ -13,8 +13,15 @@ import {
 import { db } from '../utils/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { EventComment, EventLike } from '../types';
+import { writeNotification } from '../utils/notifications';
 
-export function useCommentThread(eventId: string, commentId: string) {
+export function useCommentThread(
+  eventId: string,
+  commentId: string,
+  commentAuthorId: string,
+  eventOwnerId?: string,
+  eventTitle?: string,
+) {
   const { user } = useAuth();
   const [likes, setLikes] = useState<EventLike[]>([]);
   const [replies, setReplies] = useState<EventComment[]>([]);
@@ -71,6 +78,16 @@ export function useCommentThread(eventId: string, commentId: string) {
       text: text.trim(),
       createdAt: serverTimestamp(),
     });
+    if (commentAuthorId && commentAuthorId !== user.id) {
+      writeNotification(commentAuthorId, {
+        type: 'comment_reply',
+        fromUserId: user.id,
+        fromDisplayName: user.displayName,
+        eventId,
+        eventTitle,
+        eventOwnerId,
+      }).catch(console.error);
+    }
   };
 
   const deleteReply = async (replyId: string) => {

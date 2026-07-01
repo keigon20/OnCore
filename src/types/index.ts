@@ -56,6 +56,25 @@ export interface EventLike {
   createdAt: Date;
 }
 
+export interface BlockedUser {
+  id: string; // blocked user's uid
+  displayName: string;
+  blockedAt: Date;
+}
+
+export type ReportContentType = 'event' | 'comment' | 'reply' | 'user';
+export type ReportReason = 'spam' | 'harassment' | 'inappropriate' | 'other';
+
+export interface ReportInput {
+  reportedUserId: string;
+  contentType: ReportContentType;
+  eventId?: string;
+  commentId?: string;
+  replyId?: string;
+  reason: ReportReason;
+  details?: string;
+}
+
 // User profile type
 export interface UserProfile {
   id: string;
@@ -75,6 +94,45 @@ export interface YearStatistics {
   averageCost: number;
   mostRecentEvent?: MusicEvent;
   oldestEvent?: MusicEvent;
+}
+
+export type AppNotificationType =
+  | 'friend_request'
+  | 'friend_post'
+  | 'event_like'
+  | 'event_comment'
+  | 'comment_reply';
+
+export interface NotificationPrefs {
+  all: boolean;
+  friendRequest: boolean;
+  friendPost: boolean;
+  eventLike: boolean;
+  eventComment: boolean;
+  commentReply: boolean;
+  eventReminder: boolean;
+}
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  all: true,
+  friendRequest: true,
+  friendPost: true,
+  eventLike: true,
+  eventComment: true,
+  commentReply: true,
+  eventReminder: true,
+};
+
+export interface AppNotification {
+  id: string;
+  type: AppNotificationType;
+  fromUserId: string;
+  fromDisplayName: string;
+  eventId?: string;
+  eventTitle?: string;
+  eventOwnerId?: string;
+  read: boolean;
+  createdAt: Date;
 }
 
 // Auth state type

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { colors } from '../theme';
 import { useEventSocial } from '../hooks/useEventSocial';
+import { useAuth } from '../contexts/AuthContext';
 import { EventComment } from '../types';
 import CommentThread from '../components/CommentThread';
 
@@ -20,9 +21,11 @@ export default function CommentsScreen() {
   const navigation = useNavigation();
   const route = useRoute();
   const insets = useSafeAreaInsets();
-  const { eventId, eventTitle } = route.params as { eventId: string; eventTitle?: string };
-  const { comments, addComment, deleteComment } = useEventSocial(eventId);
+  const { user } = useAuth();
+  const { eventId, eventTitle, eventOwnerId } = route.params as { eventId: string; eventTitle?: string; eventOwnerId: string };
+  const { comments, addComment, deleteComment } = useEventSocial(eventId, eventOwnerId, eventTitle);
   const [text, setText] = useState('');
+  const isPostOwner = !!user && user.id === eventOwnerId;
 
   const handleSend = async () => {
     if (!text.trim()) return;
@@ -35,6 +38,9 @@ export default function CommentsScreen() {
       eventId={eventId}
       comment={item}
       onDeleteComment={() => deleteComment(item.id)}
+      isPostOwner={isPostOwner}
+      eventOwnerId={eventOwnerId}
+      eventTitle={eventTitle}
     />
   );
 

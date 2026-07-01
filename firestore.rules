@@ -1,0 +1,106 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isFriendOf(otherUserId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/friends/$(otherUserId));
+    }
+
+    function isOwnerOrFriendOfEvent(eventId) {
+      let ownerId = get(/databases/$(database)/documents/events/$(eventId)).data.userId;
+      return request.auth.uid == ownerId || isFriendOf(ownerId);
+    }
+
+    function isEventOwner(eventId) {
+      return request.auth.uid == get(/databases/$(database)/documents/events/$(eventId)).data.userId;
+    }
+
+    function isBlockedEitherWay(otherUserId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/blockedUsers/$(otherUserId))
+        || exists(/databases/$(database)/documents/users/$(otherUserId)/blockedUsers/$(request.auth.uid));
+    }
+
+    // User profiles - any signed-in user can look others up (needed for email search,
+    // friend names, and feed attribution). Only the owner can write their own profile.
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if request.auth.uid == userId;
+
+      match /friends/{friendId} {
+        allow read: if request.auth.uid == userId;
+        allow create, update, delete: if request.auth.uid == userId || request.auth.uid == friendId;
+      }
+
+      match /blockedUsers/{blockedId} {
+        allow read, create, delete: if request.auth.uid == userId;
+      }
+    }
+
+    // Friend requests - either party can read; only the sender can create, and not if
+    // either side has blocked the other; either party can delete (decline / cleanup).
+    match /friendRequests/{requestId} {
+      allow read: if isSignedIn() && (request.auth.uid == resource.data.fromUserId || request.auth.uid == resource.data.toUserId);
+      allow create: if request.resource.data.fromUserId == request.auth.uid
+        && !isBlockedEitherWay(request.resource.data.toUserId);
+      allow delete: if isSignedIn() && (request.auth.uid == resource.data.fromUserId || request.auth.uid == resource.data.toUserId);
+    }
+
+    // Events - owner has full access; friends can read only if not hidden.
+    match /events/{eventId} {
+      allow read: if request.auth.uid == resource.data.userId
+        || (resource.data.isHidden == false && isFriendOf(resource.data.userId));
+      allow create: if request.resource.data.userId == request.auth.uid;
+      allow update, delete: if request.auth.uid == resource.data.userId;
+
+      match /likes/{likerId} {
+        allow read: if request.auth.uid == likerId || isOwnerOrFriendOfEvent(eventId);
+        allow create, update: if request.auth.uid == likerId && isOwnerOrFriendOfEvent(eventId);
+        allow delete: if request.auth.uid == likerId || isEventOwner(eventId);
+      }
+
+      match /comments/{commentId} {
+        allow read: if request.auth.uid == resource.data.userId || isOwnerOrFriendOfEvent(eventId);
+        allow create: if request.resource.data.userId == request.auth.uid && isOwnerOrFriendOfEvent(eventId);
+        allow delete: if request.auth.uid == resource.data.userId || isEventOwner(eventId);
+
+        match /likes/{likerId} {
+          allow read: if request.auth.uid == likerId || isOwnerOrFriendOfEvent(eventId);
+          allow create, update: if request.auth.uid == likerId && isOwnerOrFriendOfEvent(eventId);
+          allow delete: if request.auth.uid == likerId || isEventOwner(eventId);
+        }
+
+        match /replies/{replyId} {
+          allow read: if request.auth.uid == resource.data.userId || isOwnerOrFriendOfEvent(eventId);
+          allow create: if request.resource.data.userId == request.auth.uid && isOwnerOrFriendOfEvent(eventId);
+          allow delete: if request.auth.uid == resource.data.userId || isEventOwner(eventId);
+        }
+      }
+    }
+
+    // Notifications - owner can read and mark as read; any signed-in user can create
+    // (writes happen client-side when a friend action occurs).
+    match /notifications/{userId}/items/{itemId} {
+      allow read, update, delete: if request.auth.uid == userId;
+      allow create: if isSignedIn();
+    }
+
+    // Reports - anyone can file one about themselves as reporter; nobody can read them
+    // back through the app. Review happens via the Firebase console (admin access
+    // bypasses these rules entirely).
+    match /reports/{reportId} {
+      allow create: if request.resource.data.reporterId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    // Bug reports - same pattern as reports: anyone can file one about
+    // themselves, nobody can read them back through the app.
+    match /bugReports/{reportId} {
+      allow create: if request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+  }
+}

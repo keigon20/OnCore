@@ -1,21 +1,29 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { colors } from '../theme';
-import { EventComment } from '../types';
+import { EventComment, ReportReason } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { useCommentThread } from '../hooks/useCommentThread';
+import { submitReport } from '../utils/reports';
+import ReportModal from './ReportModal';
 
 interface CommentThreadProps {
   eventId: string;
   comment: EventComment;
   onDeleteComment: () => void;
+  isPostOwner?: boolean;
+  eventOwnerId?: string;
+  eventTitle?: string;
 }
 
-export default function CommentThread({ eventId, comment, onDeleteComment }: CommentThreadProps) {
+type ReportTarget = { type: 'comment' | 'reply'; id: string; userId: string };
+
+export default function CommentThread({ eventId, comment, onDeleteComment, isPostOwner = false, eventOwnerId, eventTitle }: CommentThreadProps) {
   const { user } = useAuth();
-  const { likeCount, isLikedByMe, toggleLike, replies, addReply, deleteReply } = useCommentThread(eventId, comment.id);
+  const { likeCount, isLikedByMe, toggleLike, replies, addReply, deleteReply } = useCommentThread(eventId, comment.id, comment.userId, eventOwnerId, eventTitle);
   const [showReplyInput, setShowReplyInput] = useState(false);
   const [replyText, setReplyText] = useState('');
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
 
   const handleSendReply = async () => {
     if (!replyText.trim()) return;
@@ -24,14 +32,66 @@ export default function CommentThread({ eventId, comment, onDeleteComment }: Com
     setShowReplyInput(false);
   };
 
+  const handleCommentLongPress = () => {
+    const isOwnComment = comment.userId === user?.id;
+    if (isOwnComment) {
+      Alert.alert('Comment', undefined, [
+        { text: 'Delete', style: 'destructive', onPress: onDeleteComment },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else if (isPostOwner) {
+      Alert.alert('Comment', undefined, [
+        { text: 'Delete', style: 'destructive', onPress: onDeleteComment },
+        { text: 'Report', onPress: () => setReportTarget({ type: 'comment', id: comment.id, userId: comment.userId }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      Alert.alert('Comment', undefined, [
+        { text: 'Report', onPress: () => setReportTarget({ type: 'comment', id: comment.id, userId: comment.userId }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const handleReplyLongPress = (reply: EventComment) => {
+    const isOwnReply = reply.userId === user?.id;
+    if (isOwnReply) {
+      Alert.alert('Reply', undefined, [
+        { text: 'Delete', style: 'destructive', onPress: () => deleteReply(reply.id) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else if (isPostOwner) {
+      Alert.alert('Reply', undefined, [
+        { text: 'Delete', style: 'destructive', onPress: () => deleteReply(reply.id) },
+        { text: 'Report', onPress: () => setReportTarget({ type: 'reply', id: reply.id, userId: reply.userId }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    } else {
+      Alert.alert('Reply', undefined, [
+        { text: 'Report', onPress: () => setReportTarget({ type: 'reply', id: reply.id, userId: reply.userId }) },
+        { text: 'Cancel', style: 'cancel' },
+      ]);
+    }
+  };
+
+  const handleSubmitReport = async (reason: ReportReason, details: string) => {
+    if (!user || !reportTarget) return;
+    await submitReport(user.id, {
+      reportedUserId: reportTarget.userId,
+      contentType: reportTarget.type,
+      eventId,
+      commentId: reportTarget.type === 'comment' ? reportTarget.id : comment.id,
+      replyId: reportTarget.type === 'reply' ? reportTarget.id : undefined,
+      reason,
+      details,
+    });
+    setReportTarget(null);
+    Alert.alert('Report submitted', 'Thank you for letting us know.');
+  };
+
   return (
     <View style={styles.container}>
-      <TouchableOpacity
-        style={styles.commentRow}
-        onLongPress={() => {
-          if (comment.userId === user?.id) onDeleteComment();
-        }}
-      >
+      <TouchableOpacity style={styles.commentRow} onLongPress={handleCommentLongPress}>
         <Text style={styles.author}>{comment.displayName}</Text>
         <Text style={styles.text}>{comment.text}</Text>
         <View style={styles.actions}>
@@ -52,9 +112,7 @@ export default function CommentThread({ eventId, comment, onDeleteComment }: Com
             <TouchableOpacity
               key={reply.id}
               style={styles.replyRow}
-              onLongPress={() => {
-                if (reply.userId === user?.id) deleteReply(reply.id);
-              }}
+              onLongPress={() => handleReplyLongPress(reply)}
             >
               <Text style={styles.author}>{reply.displayName}</Text>
               <Text style={styles.text}>{reply.text}</Text>
@@ -79,6 +137,12 @@ export default function CommentThread({ eventId, comment, onDeleteComment }: Com
           </TouchableOpacity>
         </View>
       )}
+
+      <ReportModal
+        visible={!!reportTarget}
+        onClose={() => setReportTarget(null)}
+        onSubmit={handleSubmitReport}
+      />
     </View>
   );
 }

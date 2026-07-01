@@ -1,12 +1,15 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { AppState } from 'react-native';
 import {
   User,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
+  sendEmailVerification,
   onAuthStateChanged,
   updateProfile,
+  deleteUser,
   GoogleAuthProvider,
   signInWithCredential
 } from 'firebase/auth';
@@ -14,9 +17,19 @@ import { GoogleSignin, isErrorWithCode, statusCodes } from '@react-native-google
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../utils/firebase';
 import { UserProfile } from '../types';
+import { APP_VARIANT } from '../config/env';
+import { deleteAllUserData } from '../utils/deleteAccount';
+
+// TODO: once a dedicated staging Firebase project exists, register a separate
+// OAuth client for the staging package name (com.setly.app.staging) and use
+// its web client ID here instead of reusing the production one.
+const GOOGLE_WEB_CLIENT_IDS = {
+  production: '1077269817537-og56f8jtikapoj531kafcf431sc5u7in.apps.googleusercontent.com',
+  staging: '1077269817537-og56f8jtikapoj531kafcf431sc5u7in.apps.googleusercontent.com',
+};
 
 GoogleSignin.configure({
-  webClientId: '1077269817537-og56f8jtikapoj531kafcf431sc5u7in.apps.googleusercontent.com',
+  webClientId: GOOGLE_WEB_CLIENT_IDS[APP_VARIANT],
 });
 
 interface AuthContextType {
@@ -24,12 +37,17 @@ interface AuthContextType {
   firebaseUser: User | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isEmailVerified: boolean;
   error: string | null;
   signUp: (email: string, password: string, displayName: string) => Promise<boolean>;
   login: (email: string, password: string) => Promise<boolean>;
   signInWithGoogle: () => Promise<boolean>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<boolean>;
+  updateDisplayName: (displayName: string) => Promise<boolean>;
+  deleteAccount: () => Promise<{ success: boolean; message?: string }>;
+  sendVerificationEmail: () => Promise<boolean>;
+  refreshEmailVerified: () => Promise<boolean>;
   clearError: () => void;
 }
 
@@ -51,12 +69,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       console.log('[Auth] onAuthStateChanged fired, uid:', firebaseUser?.uid ?? null);
       setFirebaseUser(firebaseUser);
+      setIsEmailVerified(firebaseUser?.emailVerified ?? false);
 
       if (firebaseUser) {
         // Fetch user profile from Firestore
@@ -73,7 +93,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
               displayName: userData.displayName || firebaseUser.displayName || '',
               createdAt: userData.createdAt?.toDate() || new Date()
             };
-            console.log('[Auth] setUser (existing doc):', resolvedUser);
             setUser(resolvedUser);
           } else {
             // Create user profile if doesn't exist
@@ -87,7 +106,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
               ...newUser,
               createdAt: new Date()
             });
-            console.log('[Auth] setUser (new doc):', newUser);
             setUser(newUser);
           }
         } catch (err: any) {
@@ -104,18 +122,43 @@ export function AuthProvider({ children }: AuthProviderProps) {
     return () => unsubscribe();
   }, []);
 
+  // While signed in but not yet verified, pick up the verification as soon as
+  // the user comes back to the app (they verify via a link in their email,
+  // opened outside the app) instead of requiring a manual refresh tap.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (state) => {
+      if (state !== 'active') return;
+      const currentUser = auth.currentUser;
+      if (!currentUser || currentUser.emailVerified) return;
+      try {
+        await currentUser.reload();
+        setIsEmailVerified(currentUser.emailVerified);
+      } catch (err) {
+        console.error('[Auth] Failed to refresh email verification status:', err);
+      }
+    });
+
+    return () => subscription.remove();
+  }, []);
+
   const signUp = async (email: string, password: string, displayName: string): Promise<boolean> => {
     setIsLoading(true);
     setError(null);
-    
+
     try {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      
+
       // Update display name
       if (displayName) {
         await updateProfile(userCredential.user, { displayName });
       }
-      
+
+      // Don't block account creation on this - it's a nice-to-have nudge,
+      // not a requirement to use the app.
+      sendEmailVerification(userCredential.user).catch(err => {
+        console.error('[Auth] Failed to send verification email:', err);
+      });
+
       // Create user profile in Firestore
       const newUser: UserProfile = {
         id: userCredential.user.uid,
@@ -123,12 +166,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
         displayName,
         createdAt: new Date()
       };
-      
+
       await setDoc(doc(db, 'users', userCredential.user.uid), {
         ...newUser,
         createdAt: new Date()
       });
-      
+
       setUser(newUser);
       setIsLoading(false);
       return true;
@@ -223,11 +266,74 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
   };
 
+  const updateDisplayName = async (displayName: string): Promise<boolean> => {
+    const trimmed = displayName.trim();
+    if (!trimmed || !firebaseUser || !user) return false;
+
+    setError(null);
+    try {
+      await updateProfile(firebaseUser, { displayName: trimmed });
+      await setDoc(doc(db, 'users', firebaseUser.uid), { displayName: trimmed }, { merge: true });
+      setUser(prev => prev ? { ...prev, displayName: trimmed } : prev);
+      return true;
+    } catch (err: any) {
+      setError(mapFirebaseError(err.code) || 'Failed to update name');
+      return false;
+    }
+  };
+
+  const deleteAccount = async (): Promise<{ success: boolean; message?: string }> => {
+    if (!firebaseUser || !user) return { success: false, message: 'Not signed in.' };
+
+    setError(null);
+    try {
+      await deleteAllUserData(user.id);
+      await deleteUser(firebaseUser);
+      setUser(null);
+      setFirebaseUser(null);
+      return { success: true };
+    } catch (err: any) {
+      console.error('[Auth] Failed to delete account:', err?.code, err?.message, err);
+      const message = err.code === 'auth/requires-recent-login'
+        ? 'Please sign out and sign back in, then try deleting your account again.'
+        : (mapFirebaseError(err.code) || err?.message || 'Failed to delete account');
+      setError(message);
+      return { success: false, message };
+    }
+  };
+
+  const sendVerificationEmail = async (): Promise<boolean> => {
+    if (!firebaseUser) return false;
+
+    setError(null);
+    try {
+      await sendEmailVerification(firebaseUser);
+      return true;
+    } catch (err: any) {
+      setError(mapFirebaseError(err.code) || 'Failed to send verification email');
+      return false;
+    }
+  };
+
+  const refreshEmailVerified = async (): Promise<boolean> => {
+    if (!firebaseUser) return false;
+
+    try {
+      await firebaseUser.reload();
+      setIsEmailVerified(firebaseUser.emailVerified);
+      return firebaseUser.emailVerified;
+    } catch (err: any) {
+      console.error('[Auth] Failed to refresh email verification status:', err);
+      return isEmailVerified;
+    }
+  };
+
   const clearError = () => setError(null);
 
   const value = {
     user,
     firebaseUser,
+    isEmailVerified,
     isLoading,
     isAuthenticated: !!user,
     error,
@@ -236,6 +342,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
     signInWithGoogle,
     logout,
     resetPassword,
+    updateDisplayName,
+    deleteAccount,
+    sendVerificationEmail,
+    refreshEmailVerified,
     clearError
   };
 
@@ -297,14 +407,4 @@ function isMissingInitialStateError(error: any): boolean {
   );
 }
 
-// Helper to handle auth state recovery
-async function recoverAuthState(): Promise<void> {
-  // Force reload the auth module to recover from stale state
-  try {
-    // The auth state listener will automatically re-initialize
-    console.log('Attempting to recover auth state...');
-  } catch (error) {
-    console.error('Auth state recovery failed:', error);
-  }
-}
 

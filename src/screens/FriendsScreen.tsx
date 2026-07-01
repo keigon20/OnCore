@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { colors } from '../theme';
 import { useFriends } from '../contexts/FriendsContext';
-import { Friend, FriendRequest } from '../types';
+import { BlockedUser, Friend, FriendRequest } from '../types';
 
 export default function FriendsScreen() {
   const navigation = useNavigation();
@@ -21,11 +21,13 @@ export default function FriendsScreen() {
     friends,
     incomingRequests,
     outgoingRequests,
+    blockedUsers,
     searchUserByEmail,
     sendFriendRequest,
     acceptRequest,
     declineRequest,
     removeFriend,
+    unblockUser,
   } = useFriends();
 
   const [email, setEmail] = useState('');
@@ -67,6 +69,17 @@ export default function FriendsScreen() {
       [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Remove', style: 'destructive', onPress: () => removeFriend(friend.id) }
+      ]
+    );
+  };
+
+  const handleUnblock = (blocked: BlockedUser) => {
+    Alert.alert(
+      'Unblock ' + blocked.displayName,
+      'They will be able to send you friend requests again.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Unblock', onPress: () => unblockUser(blocked.id) }
       ]
     );
   };
@@ -161,6 +174,23 @@ export default function FriendsScreen() {
         )}
         ListEmptyComponent={
           <Text style={styles.emptyText}>No friends yet. Search by email to add one.</Text>
+        }
+        ListFooterComponent={
+          blockedUsers.length > 0 ? (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Blocked ({blockedUsers.length})</Text>
+              {blockedUsers.map(blocked => (
+                <TouchableOpacity
+                  key={blocked.id}
+                  style={styles.friendRow}
+                  onPress={() => handleUnblock(blocked)}
+                >
+                  <Text style={styles.friendName}>{blocked.displayName}</Text>
+                  <Text style={styles.friendEmail}>Tap to unblock</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : null
         }
       />
     </View>

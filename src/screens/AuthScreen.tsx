@@ -13,6 +13,10 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { colors } from '../theme';
+import Logo from '../components/Logo';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MIN_PASSWORD_LENGTH = 6;
 
 interface AuthScreenProps {
   onAuthSuccess: () => void;
@@ -29,15 +33,18 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
   const [showPasswordReset, setShowPasswordReset] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
 
+  const isEmailValid = EMAIL_REGEX.test(email.trim());
+  const isPasswordLongEnough = password.length >= MIN_PASSWORD_LENGTH;
+  const doPasswordsMatch = password === confirmPassword;
+
+  const showEmailError = email.length > 0 && !isEmailValid;
+  const showPasswordError = !isLoginMode && password.length > 0 && !isPasswordLongEnough;
+  const showConfirmPasswordError = !isLoginMode && confirmPassword.length > 0 && !doPasswordsMatch;
+
   const handleSubmit = async () => {
     clearError();
-    
-    if (!email || !password) {
-      return;
-    }
 
-    if (!isLoginMode && password !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match');
+    if (!email || !password) {
       return;
     }
 
@@ -77,7 +84,12 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
 
   const isFormValid = () => {
     if (!email || !password) return false;
-    if (!isLoginMode && password !== confirmPassword) return false;
+    if (!isEmailValid) return false;
+    if (!isLoginMode) {
+      if (!displayName.trim()) return false;
+      if (!isPasswordLongEnough) return false;
+      if (!doPasswordsMatch) return false;
+    }
     return true;
   };
 
@@ -88,7 +100,7 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
     >
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
-          <Text style={styles.appName}>Live Music Tracker</Text>
+          <Logo height={40} style={styles.logo} />
           <Text style={styles.subtitle}>
             {isLoginMode ? 'Welcome Back!' : 'Create Account'}
           </Text>
@@ -121,6 +133,9 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
               autoCapitalize="none"
               autoCorrect={false}
             />
+            {showEmailError && (
+              <Text style={styles.fieldHint}>Enter a valid email address</Text>
+            )}
           </View>
 
           <View style={styles.inputGroup}>
@@ -133,6 +148,11 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
               placeholder="Enter your password"
               secureTextEntry
             />
+            {showPasswordError && (
+              <Text style={styles.fieldHint}>
+                Password must be at least {MIN_PASSWORD_LENGTH} characters ({password.length}/{MIN_PASSWORD_LENGTH})
+              </Text>
+            )}
           </View>
 
           {!isLoginMode && (
@@ -146,6 +166,9 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest }: AuthScr
                 placeholder="Confirm your password"
                 secureTextEntry
               />
+              {showConfirmPasswordError && (
+                <Text style={styles.fieldHint}>Passwords do not match</Text>
+              )}
             </View>
           )}
 
@@ -262,10 +285,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  appName: {
-    fontSize: 26,
-    fontWeight: '600',
-    color: colors.textPrimary,
+  logo: {
+    alignSelf: 'center',
     marginBottom: 8,
   },
   subtitle: {
@@ -293,6 +314,11 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 16,
     color: colors.textPrimary,
+  },
+  fieldHint: {
+    color: colors.destructive,
+    fontSize: 12,
+    marginTop: 6,
   },
   errorText: {
     color: colors.destructive,

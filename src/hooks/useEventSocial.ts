@@ -13,8 +13,9 @@ import {
 import { db } from '../utils/firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { EventComment, EventLike } from '../types';
+import { writeNotification } from '../utils/notifications';
 
-export function useEventSocial(eventId: string) {
+export function useEventSocial(eventId: string, eventOwnerId?: string, eventTitle?: string) {
   const { user } = useAuth();
   const [likes, setLikes] = useState<EventLike[]>([]);
   const [comments, setComments] = useState<EventComment[]>([]);
@@ -58,6 +59,16 @@ export function useEventSocial(eventId: string) {
       await deleteDoc(likeRef);
     } else {
       await setDoc(likeRef, { userId: user.id, displayName: user.displayName, createdAt: serverTimestamp() });
+      if (eventOwnerId && eventOwnerId !== user.id) {
+        writeNotification(eventOwnerId, {
+          type: 'event_like',
+          fromUserId: user.id,
+          fromDisplayName: user.displayName,
+          eventId,
+          eventTitle,
+          eventOwnerId,
+        }).catch(console.error);
+      }
     }
   };
 
@@ -69,6 +80,16 @@ export function useEventSocial(eventId: string) {
       text: text.trim(),
       createdAt: serverTimestamp(),
     });
+    if (eventOwnerId && eventOwnerId !== user.id) {
+      writeNotification(eventOwnerId, {
+        type: 'event_comment',
+        fromUserId: user.id,
+        fromDisplayName: user.displayName,
+        eventId,
+        eventTitle,
+        eventOwnerId,
+      }).catch(console.error);
+    }
   };
 
   const deleteComment = async (commentId: string) => {

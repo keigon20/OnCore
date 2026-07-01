@@ -17,16 +17,19 @@ import { searchTicketmasterEvents, TicketmasterEventResult } from '../utils/tick
 import { colors } from '../theme';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'SearchEvent'>;
+type Step = 'select' | 'search';
 
 export default function SearchEventScreen() {
   const navigation = useNavigation<NavigationProp>();
   const insets = useSafeAreaInsets();
+  const [step, setStep] = useState<Step>('select');
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<TicketmasterEventResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (step !== 'search') return;
     if (!query.trim()) {
       setResults([]);
       setError(null);
@@ -49,7 +52,7 @@ export default function SearchEventScreen() {
     }, 400);
 
     return () => clearTimeout(timeout);
-  }, [query]);
+  }, [query, step]);
 
   const handleSelect = (result: TicketmasterEventResult) => {
     navigation.navigate('AddEvent', { prefill: result.prefill });
@@ -76,13 +79,53 @@ export default function SearchEventScreen() {
     </TouchableOpacity>
   );
 
+  if (step === 'select') {
+    return (
+      <View style={styles.container}>
+        <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={styles.cancelText}>Cancel</Text>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Add Event</Text>
+          <View style={styles.headerSpacer} />
+        </View>
+
+        <View style={styles.selectContainer}>
+          <Text style={styles.selectPrompt}>Is this event in the future or the past?</Text>
+
+          <TouchableOpacity
+            style={styles.typeCard}
+            onPress={() => setStep('search')}
+          >
+            <Text style={styles.typeCardEmoji}>🎟️</Text>
+            <View style={styles.typeCardText}>
+              <Text style={styles.typeCardTitle}>Planning to go</Text>
+              <Text style={styles.typeCardSubtitle}>Find your upcoming event on Ticketmaster</Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.typeCard}
+            onPress={handleAddCustom}
+          >
+            <Text style={styles.typeCardEmoji}>✅</Text>
+            <View style={styles.typeCardText}>
+              <Text style={styles.typeCardTitle}>Already attended</Text>
+              <Text style={styles.typeCardSubtitle}>Add a past event manually</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <View style={[styles.header, { paddingTop: insets.top + 16 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Text style={styles.cancelText}>Cancel</Text>
+        <TouchableOpacity onPress={() => setStep('select')}>
+          <Text style={styles.cancelText}>Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Add Event</Text>
+        <Text style={styles.headerTitle}>Find Your Event</Text>
         <View style={styles.headerSpacer} />
       </View>
 
@@ -149,6 +192,44 @@ const styles = StyleSheet.create({
   },
   headerSpacer: {
     width: 50,
+  },
+  selectContainer: {
+    flex: 1,
+    padding: 24,
+  },
+  selectPrompt: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  typeCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: 14,
+    padding: 20,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  typeCardEmoji: {
+    fontSize: 32,
+    marginRight: 16,
+  },
+  typeCardText: {
+    flex: 1,
+  },
+  typeCardTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: colors.textPrimary,
+    marginBottom: 4,
+  },
+  typeCardSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
   },
   searchContainer: {
     padding: 16,

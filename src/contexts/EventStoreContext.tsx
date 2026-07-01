@@ -8,12 +8,14 @@ import {
   query,
   where,
   orderBy,
-  serverTimestamp
+  serverTimestamp,
+  writeBatch
 } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../utils/firebase';
 import { useAuth } from './AuthContext';
 import { MusicEvent, YearStatistics } from '../types';
+import { scheduleEventReminder, cancelEventReminder } from '../utils/notifications';
 
 const EVENTS_STORAGE_KEY = 'music_events';
 const EVENTS_COLLECTION = 'events';
@@ -21,10 +23,11 @@ const EVENTS_COLLECTION = 'events';
 interface EventStoreContextType {
   events: MusicEvent[];
   isLoading: boolean;
-  addEvent: (event: Omit<MusicEvent, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  addEvent: (event: Omit<MusicEvent, 'id' | 'createdAt' | 'updatedAt'>) => Promise<string>;
   updateEvent: (event: MusicEvent) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
   getEventById: (id: string) => MusicEvent | undefined;
+  backfillDisplayName: (displayName: string) => Promise<void>;
   totalEvents: number;
   totalMoneySpent: number;
   uniqueArtists: number;
@@ -137,16 +140,15 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
     }
   };
 
-  const addEvent = async (eventData: Omit<MusicEvent, 'id' | 'createdAt' | 'updatedAt'>) => {
+  const addEvent = async (eventData: Omit<MusicEvent, 'id' | 'createdAt' | 'updatedAt'>): Promise<string> => {
     const newEvent: MusicEvent = {
       ...eventData,
-      id: '', // Will be set by Firestore or locally
+      id: '',
       createdAt: new Date(),
       updatedAt: new Date()
     };
 
     if (isAuthenticated && user) {
-      // Save to Firestore - the onSnapshot listener will update local state
       const eventRef = doc(collection(db, EVENTS_COLLECTION));
       await setDoc(eventRef, {
         ...newEvent,
@@ -156,13 +158,15 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       }, { merge: true });
+      // Schedule a local reminder for the day after the event if it's in the future
+      if (eventData.date > new Date()) {
+        scheduleEventReminder(eventRef.id, eventData.title, eventData.date).catch(console.error);
+      }
+      return eventRef.id;
     } else {
-      // Save locally with generated ID
-      const localEvent = {
-        ...newEvent,
-        id: Date.now().toString()
-      };
-      setEvents(prev => [localEvent, ...prev]);
+      const id = Date.now().toString();
+      setEvents(prev => [{ ...newEvent, id }, ...prev]);
+      return id;
     }
   };
 
@@ -171,6 +175,9 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
       ...event,
       updatedAt: new Date()
     };
+
+    // Cancel the post-event reminder — the user has updated the event themselves
+    cancelEventReminder(event.id).catch(console.error);
 
     if (isAuthenticated && user) {
       // Update in Firestore
@@ -198,6 +205,22 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
 
   const getEventById = (id: string) => {
     return events.find(e => e.id === id);
+  };
+
+  const backfillDisplayName = async (displayName: string) => {
+    if (!isAuthenticated || !user || events.length === 0) return;
+
+    const BATCH_LIMIT = 500; // Firestore max operations per batch
+    const eventIds = events.map(e => e.id);
+
+    for (let i = 0; i < eventIds.length; i += BATCH_LIMIT) {
+      const chunk = eventIds.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(db);
+      chunk.forEach(id => {
+        batch.update(doc(db, EVENTS_COLLECTION, id), { userDisplayName: displayName });
+      });
+      await batch.commit();
+    }
   };
 
   // Statistics calculations
@@ -276,6 +299,7 @@ export function EventStoreProvider({ children }: EventStoreProviderProps) {
     updateEvent,
     deleteEvent,
     getEventById,
+    backfillDisplayName,
     totalEvents,
     totalMoneySpent,
     uniqueArtists,

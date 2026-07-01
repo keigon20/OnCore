@@ -4,16 +4,33 @@ import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import ReactNativeAsyncStorage from '@react-native-async-storage/async-storage';
+import { APP_VARIANT } from '../config/env';
 
 // Firebase configuration - from Firebase Console
-const firebaseConfig = {
-  apiKey: "AIzaSyB-RsH8ZtmTSgX5JbSyXrVdrYZ-I2_Cb4o",
-  authDomain: "livemusictracker-6eeaf.firebaseapp.com",
-  projectId: "livemusictracker-6eeaf",
-  storageBucket: "livemusictracker-6eeaf.firebasestorage.app",
-  messagingSenderId: "1077269817537",
-  appId: "1:1077269817537:web:e09774dda09e5e4a85cc40"
+// TODO: staging currently points at the same project as production. Once a
+// dedicated staging Firebase project is provisioned, replace these values
+// (and re-point GoogleSignin's webClientId in AuthContext.tsx) so staging
+// data never touches production.
+const firebaseConfigs = {
+  production: {
+    apiKey: "AIzaSyB-RsH8ZtmTSgX5JbSyXrVdrYZ-I2_Cb4o",
+    authDomain: "livemusictracker-6eeaf.firebaseapp.com",
+    projectId: "livemusictracker-6eeaf",
+    storageBucket: "livemusictracker-6eeaf.firebasestorage.app",
+    messagingSenderId: "1077269817537",
+    appId: "1:1077269817537:web:e09774dda09e5e4a85cc40"
+  },
+  staging: {
+    apiKey: "AIzaSyB-RsH8ZtmTSgX5JbSyXrVdrYZ-I2_Cb4o",
+    authDomain: "livemusictracker-6eeaf.firebaseapp.com",
+    projectId: "livemusictracker-6eeaf",
+    storageBucket: "livemusictracker-6eeaf.firebasestorage.app",
+    messagingSenderId: "1077269817537",
+    appId: "1:1077269817537:web:e09774dda09e5e4a85cc40"
+  },
 };
+
+const firebaseConfig = firebaseConfigs[APP_VARIANT];
 
 // Initialize Firebase
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();

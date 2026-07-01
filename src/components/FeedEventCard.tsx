@@ -1,8 +1,12 @@
-import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Alert } from 'react-native';
 import { colors } from '../theme';
-import { FeedEvent } from '../types';
-import { useEventSocial } from '../hooks/useEventSocial';
+import { FeedEvent, ReportReason } from '../types';
+import { useStaticEventSocial } from '../hooks/useStaticEventSocial';
+import { useAuth } from '../contexts/AuthContext';
+import { useFriends } from '../contexts/FriendsContext';
+import { submitReport } from '../utils/reports';
+import ReportModal from './ReportModal';
 
 interface FeedEventCardProps {
   event: FeedEvent;
@@ -10,12 +14,66 @@ interface FeedEventCardProps {
 }
 
 export default function FeedEventCard({ event, onPressComments }: FeedEventCardProps) {
-  const { likeCount, isLikedByMe, toggleLike, commentCount } = useEventSocial(event.id);
+  const { likeCount, isLikedByMe, toggleLike, commentCount } = useStaticEventSocial(event.id, event.userId, event.title);
+  const { user } = useAuth();
+  const { blockUser } = useFriends();
+  const [showReportModal, setShowReportModal] = useState(false);
   const isUpcoming = new Date(event.date) >= new Date();
+
+  const handleBlock = () => {
+    Alert.alert(
+      'Block ' + event.userDisplayName,
+      'You will no longer see their events, and they will no longer see yours. This removes your friendship.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: () => blockUser(event.userId, event.userDisplayName),
+        },
+      ]
+    );
+  };
+
+  const handleOptions = () => {
+    Alert.alert(
+      event.userDisplayName,
+      undefined,
+      [
+        { text: 'Report Event', onPress: () => setShowReportModal(true) },
+        { text: `Block ${event.userDisplayName}`, style: 'destructive', onPress: handleBlock },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const handleSubmitReport = async (reason: ReportReason, details: string) => {
+    if (!user) return;
+    await submitReport(user.id, {
+      reportedUserId: event.userId,
+      contentType: 'event',
+      eventId: event.id,
+      reason,
+      details,
+    });
+    setShowReportModal(false);
+    Alert.alert('Report submitted', 'Thank you for letting us know.');
+  };
 
   return (
     <View style={styles.card}>
-      <Text style={styles.owner}>{event.userDisplayName}</Text>
+      <View style={styles.ownerRow}>
+        <Text style={styles.owner}>{event.userDisplayName}</Text>
+        <TouchableOpacity onPress={handleOptions} hitSlop={8}>
+          <Text style={styles.optionsButton}>···</Text>
+        </TouchableOpacity>
+      </View>
+
+      <ReportModal
+        visible={showReportModal}
+        onClose={() => setShowReportModal(false)}
+        onSubmit={handleSubmitReport}
+      />
 
       {event.imageUri && (
         <Image source={{ uri: event.imageUri }} style={styles.image} />
@@ -59,12 +117,23 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     overflow: 'hidden',
   },
+  ownerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+  },
+  optionsButton: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.textTertiary,
+    paddingHorizontal: 4,
+  },
   owner: {
     fontSize: 13,
     fontWeight: '600',
     color: colors.textSecondary,
-    paddingHorizontal: 16,
-    paddingTop: 12,
   },
   image: {
     width: '100%',

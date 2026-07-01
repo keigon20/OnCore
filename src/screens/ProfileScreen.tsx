@@ -1,20 +1,21 @@
 import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  ScrollView, 
-  TouchableOpacity, 
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
   StyleSheet,
   Alert,
-  TextInput,
-  Modal
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '../contexts/AuthContext';
 import { useEventStore } from '../contexts/EventStoreContext';
 import { useFriends } from '../contexts/FriendsContext';
 import { colors } from '../theme';
+import Logo from '../components/Logo';
 import type { RootStackParamList } from '../types/navigation';
 
 interface ProfileScreenProps {
@@ -25,14 +26,34 @@ type NavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
   const navigation = useNavigation<NavigationProp>();
-  const { user, isAuthenticated, logout } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { user, isAuthenticated, isEmailVerified, logout, sendVerificationEmail, refreshEmailVerified } = useAuth();
   const eventStore = useEventStore();
   const { friends, incomingRequests } = useFriends();
-  const [showEditName, setShowEditName] = useState(false);
-  const [tempName, setTempName] = useState(user?.displayName || '');
+  const [isSendingVerification, setIsSendingVerification] = useState(false);
+  const [isRefreshingVerification, setIsRefreshingVerification] = useState(false);
 
   const formatCurrency = (amount: number) => {
     return `$${amount.toFixed(2)}`;
+  };
+
+  const handleResendVerification = async () => {
+    setIsSendingVerification(true);
+    const success = await sendVerificationEmail();
+    setIsSendingVerification(false);
+    Alert.alert(
+      success ? 'Email Sent' : 'Error',
+      success ? 'Check your inbox for a verification link.' : 'Failed to send verification email. Please try again.'
+    );
+  };
+
+  const handleRefreshVerification = async () => {
+    setIsRefreshingVerification(true);
+    const verified = await refreshEmailVerified();
+    setIsRefreshingVerification(false);
+    if (!verified) {
+      Alert.alert('Not Verified Yet', "We don't see a verification yet. Check your inbox, or resend the email.");
+    }
   };
 
   const handleLogout = () => {
@@ -61,6 +82,13 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
 
   return (
     <ScrollView style={styles.container}>
+      <View style={[styles.logoRow, { paddingTop: insets.top + 16 }]}>
+        <Logo />
+        <TouchableOpacity onPress={() => navigation.navigate('Settings')} hitSlop={8}>
+          <Ionicons name="settings-outline" size={24} color={colors.textSecondary} />
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.header}>
         <View style={styles.avatar}>
           <Text style={styles.avatarText}>
@@ -70,11 +98,27 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
         <Text style={styles.displayName}>
           {user?.displayName || 'Concert Journal'}
         </Text>
-        {isAuthenticated && (
-          <Text style={styles.email}>{user?.email}</Text>
-        )}
+        {isAuthenticated && <Text style={styles.email}>{user?.email}</Text>}
         <Text style={styles.subtitle}>Your Concert Journey</Text>
       </View>
+
+      {isAuthenticated && !isEmailVerified && (
+        <View style={styles.verifyBanner}>
+          <Text style={styles.verifyBannerText}>Verify your email to secure your account.</Text>
+          <View style={styles.verifyBannerActions}>
+            <TouchableOpacity onPress={handleResendVerification} disabled={isSendingVerification}>
+              <Text style={styles.verifyBannerAction}>
+                {isSendingVerification ? 'Sending...' : 'Resend email'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleRefreshVerification} disabled={isRefreshingVerification}>
+              <Text style={styles.verifyBannerAction}>
+                {isRefreshingVerification ? 'Checking...' : "I've verified"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <View style={styles.statsGrid}>
         {renderStatCard('Total Events', `${eventStore.totalEvents}`)}
@@ -139,39 +183,6 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
           </View>
         )}
       </View>
-
-      <Modal
-        visible={showEditName}
-        transparent
-        animationType="fade"
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Name</Text>
-            <TextInput
-              style={styles.modalInput}
-              placeholderTextColor={colors.textTertiary}
-              value={tempName}
-              onChangeText={setTempName}
-              placeholder="Enter your name"
-            />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.cancelBtn]}
-                onPress={() => setShowEditName(false)}
-              >
-                <Text style={styles.cancelBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.saveBtn]}
-                onPress={() => setShowEditName(false)}
-              >
-                <Text style={styles.saveBtnText}>Save</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
     </ScrollView>
   );
 }
@@ -179,6 +190,14 @@ export default function ProfileScreen({ onSignIn }: ProfileScreenProps) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: colors.background,
+  },
+  logoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 16,
     backgroundColor: colors.background,
   },
   header: {
@@ -216,6 +235,26 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: colors.textTertiary,
+  },
+  verifyBanner: {
+    backgroundColor: colors.surfaceAlt,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+    padding: 16,
+  },
+  verifyBannerText: {
+    fontSize: 14,
+    color: colors.textPrimary,
+    marginBottom: 8,
+  },
+  verifyBannerActions: {
+    flexDirection: 'row',
+    gap: 20,
+  },
+  verifyBannerAction: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.accent,
   },
   statsGrid: {
     flexDirection: 'row',
@@ -331,58 +370,6 @@ const styles = StyleSheet.create({
     color: colors.textPrimary,
     fontSize: 16,
     fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: colors.surface,
-    borderRadius: 16,
-    padding: 20,
-    width: '85%',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.textPrimary,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  modalInput: {
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
-    color: colors.textPrimary,
-    marginBottom: 16,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  modalButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  cancelBtn: {
-    backgroundColor: colors.surfaceAlt,
-  },
-  cancelBtnText: {
-    color: colors.textSecondary,
-  },
-  saveBtn: {
-    backgroundColor: colors.accent,
-  },
-  saveBtnText: {
-    color: colors.textPrimary,
   },
 });
 

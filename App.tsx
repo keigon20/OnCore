@@ -4,10 +4,14 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import MobileAds, { AdsConsent } from 'react-native-google-mobile-ads';
+import * as Notifications from 'expo-notifications';
 import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { EventStoreProvider } from './src/contexts/EventStoreContext';
 import { FriendsProvider } from './src/contexts/FriendsContext';
+import { NotificationsProvider } from './src/contexts/NotificationsContext';
 import AuthScreen from './src/screens/AuthScreen';
 import HomeScreen from './src/screens/HomeScreen';
 import JournalScreen from './src/screens/JournalScreen';
@@ -17,8 +21,24 @@ import AddEventScreen from './src/screens/AddEventScreen';
 import EventDetailScreen from './src/screens/EventDetailScreen';
 import FriendsScreen from './src/screens/FriendsScreen';
 import CommentsScreen from './src/screens/CommentsScreen';
+import NotificationsScreen from './src/screens/NotificationsScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import NotificationSettingsScreen from './src/screens/NotificationSettingsScreen';
+import PrivacyPolicyScreen from './src/screens/PrivacyPolicyScreen';
+import TermsOfUseScreen from './src/screens/TermsOfUseScreen';
 import { MusicEvent } from './src/types';
 import { colors } from './src/theme';
+
+// Show notifications as alerts when the app is foregrounded
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -36,8 +56,19 @@ function MainTabs({ navigation, onSignIn }: { navigation: any; onSignIn: () => v
         headerShown: false,
       }}
     >
-      <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Journal">
+      <Tab.Screen
+        name="Home"
+        component={HomeScreen}
+        options={{
+          tabBarIcon: ({ color, size }) => <Ionicons name="home" color={color} size={size} />,
+        }}
+      />
+      <Tab.Screen
+        name="Journal"
+        options={{
+          tabBarIcon: ({ color, size }) => <Ionicons name="journal" color={color} size={size} />,
+        }}
+      >
         {() => (
           <JournalScreen
             onEventPress={(event: MusicEvent) => navigation.navigate('EventDetail', { event })}
@@ -45,18 +76,26 @@ function MainTabs({ navigation, onSignIn }: { navigation: any; onSignIn: () => v
           />
         )}
       </Tab.Screen>
-      <Tab.Screen name="Profile">
+      <Tab.Screen
+        name="Profile"
+        options={{
+          tabBarIcon: ({ color, size }) => <Ionicons name="person-circle" color={color} size={size} />,
+        }}
+      >
         {() => <ProfileScreen onSignIn={onSignIn} />}
       </Tab.Screen>
     </Tab.Navigator>
   );
 }
 
-import { RootStackParamList } from './src/types/navigation';
-
 function AppContent() {
   const { isAuthenticated, isLoading } = useAuth();
   const [showAuth, setShowAuth] = useState(false);
+
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    Notifications.requestPermissionsAsync().catch(console.error);
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return (
@@ -86,11 +125,31 @@ function AppContent() {
       <Stack.Screen name="EventDetail" component={EventDetailScreen} />
       <Stack.Screen name="Friends" component={FriendsScreen} />
       <Stack.Screen name="Comments" component={CommentsScreen} />
+      <Stack.Screen name="Notifications" component={NotificationsScreen} />
+      <Stack.Screen name="Settings" component={SettingsScreen} />
+      <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
+      <Stack.Screen name="PrivacyPolicy" component={PrivacyPolicyScreen} />
+      <Stack.Screen name="TermsOfUse" component={TermsOfUseScreen} />
     </Stack.Navigator>
   );
 }
 
 export default function App() {
+  useEffect(() => {
+    (async () => {
+      try {
+        await AdsConsent.gatherConsent();
+      } catch (err) {
+        console.error('[Ads] Failed to gather consent:', err);
+      }
+      try {
+        await MobileAds().initialize();
+      } catch (err) {
+        console.error('[Ads] Failed to initialize Mobile Ads SDK:', err);
+      }
+    })();
+  }, []);
+
   return (
     <SafeAreaProvider>
       <NavigationContainer
@@ -109,8 +168,10 @@ export default function App() {
         <AuthProvider>
           <FriendsProvider>
             <EventStoreProvider>
-              <StatusBar style="light" />
-              <AppContent />
+              <NotificationsProvider>
+                <StatusBar style="light" />
+                <AppContent />
+              </NotificationsProvider>
             </EventStoreProvider>
           </FriendsProvider>
         </AuthProvider>

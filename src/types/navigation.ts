@@ -14,5 +14,10 @@ export type RootStackParamList = {
   AddEvent: { eventToEdit?: MusicEvent; prefill?: EventPrefill };
   EventDetail: { event: MusicEvent };
   Friends: undefined;
-  Comments: { eventId: string; eventTitle?: string };
+  Comments: { eventId: string; eventTitle?: string; eventOwnerId: string };
+  Notifications: undefined;
+  NotificationSettings: undefined;
+  Settings: undefined;
+  PrivacyPolicy: undefined;
+  TermsOfUse: undefined;
 };
